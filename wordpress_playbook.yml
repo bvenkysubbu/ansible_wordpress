@@ -1,69 +1,68 @@
 ---
-wp_mysql_db: wordpress
-wp_mysql_user: wordpress
-wp_mysql_password: wp_db_password
+- hosts: managed_wordpress
+  vars:
+    wp_mysql_db: wordpress
+    wp_mysql_user: wordpress
+    wp_mysql_password: mysecret
+  tasks:
+    - name: Update apt cache
+      apt: update_cache=yes cache_valid_time=3600
+      sudo: yes
 
-- name: Update apt cache
-  apt: update_cache=yes cache_valid_time=3600
-  sudo: yes
+    - name: Install required software
+      apt: name={{ item }} state=present
+      sudo: yes
+      with_items:
+        - apache2
+        - mysql-server
+        - php5-mysql
+        - php5
+        - libapache2-mod-php5
+        - php5-mcrypt
+        - python-mysqldb
+    - name: Install php extensions
+      apt: name={{ item }} state=present
+      sudo: yes
+      with_items:
+        - php5-gd
+        - libssh2-php
+    - name: Create mysql database
+      mysql_db: name={{ wp_mysql_db }} state=present
 
-- name: Install required software
-  apt: name={{ item }} state=present
-  sudo: yes
-  with_items:
-    - apache2
-    - mysql-server
-    - php5-mysql
-    - php5
-    - libapache2-mod-php5
-    - php5-mcrypt
-    - python-mysqldb
-- name: Install php extensions
-  apt: name={{ item }} state=present
-  sudo: yes
-  with_items:
-    - php5-gd 
-    - libssh2-php
-- name: Create mysql database
-  mysql_db: name={{ wp_mysql_db }} state=present
+    - name: Create mysql user
+      mysql_user:
+        name={{ wp_mysql_user }}
+        password={{ wp_mysql_password }}
+        priv=*.*:ALL
+    - name: Download WordPress
+      get_url: url=https://wordpress.org/latest.tar.gz dest=/tmp/wordpress.tar.gz validate_certs=no
+      sudo: yes
+    - name: Extract WordPress
+      unarchive: src=/tmp/wordpress.tar.gz dest=/var/www/ copy=no
+      sudo: yes
+    - name: Update default Apache site
+      sudo: yes
+      lineinfile:
+        dest=/etc/apache2/sites-enabled/000-default.conf
+        regexp="(.)+DocumentRoot /var/www/html"
+        line="DocumentRoot /var/www/wordpress"
+      sudo: yes
 
-- name: Create mysql user
-  mysql_user: 
-    name={{ wp_mysql_user }} 
-    password={{ wp_mysql_password }} 
-    priv=*.*:ALL
-- name: Download WordPress  get_url: 
-    url=https://wordpress.org/latest.tar.gz 
-    dest=/tmp/wordpress.tar.gz
-    validate_certs=no 
-    sudo: yes
-- name: Extract WordPress  unarchive: src=/tmp/wordpress.tar.gz dest=/var/www/ copy=no 
-  sudo: yes
-- name: Update default Apache site
-  sudo: yes
-  lineinfile: 
-    dest=/etc/apache2/sites-enabled/000-default.conf 
-    regexp="(.)+DocumentRoot /var/www/html"
-    line="DocumentRoot /var/www/wordpress"
-  notify:
-    - restart apache
-  sudo: yes
+    - name: restart apache
+      service: name=apache2 state=restarted
+      sudo: yes
 
-- name: restart apache
-  service: name=apache2 state=restarted
-  sudo: yes  
-  
-- name: Copy sample config file
-  command: mv /var/www/wordpress/wp-config-sample.php /var/www/wordpress/wp-config.php creates=/var/www/wordpress/wp-config.php
-  sudo: yes
+    - name: Copy sample config file
+      command: mv /var/www/wordpress/wp-config-sample.php /var/www/wordpress/wp-config.php creates=/var/www/wordpress/wp-config.php
+      sudo: yes
 
-- name: Update WordPress config file
-  lineinfile:
-    dest=/var/www/wordpress/wp-config.php
-    regexp="{{ item.regexp }}"
-    line="{{ item.line }}"
-  with_items:
-    - {'regexp': "define\\('DB_NAME', '(.)+'\\);", 'line': "define('DB_NAME', '{{wp_mysql_db}}');"}        
-    - {'regexp': "define\\('DB_USER', '(.)+'\\);", 'line': "define('DB_USER', '{{wp_mysql_user}}');"}        
-    - {'regexp': "define\\('DB_PASSWORD', '(.)+'\\);", 'line': "define('DB_PASSWORD', '{{wp_mysql_password}}');"}
-  sudo: yes   
+    - name: Update WordPress config file
+      lineinfile:
+        dest=/var/www/wordpress/wp-config.php
+        regexp="{{ item.regexp }}"
+        line="{{ item.line }}"
+      with_items:
+        - {'regexp': "define\\('DB_NAME', '(.)+'\\);", 'line': "define('DB_NAME', '{{wp_mysql_db}}');"}
+        - {'regexp': "define\\('DB_USER', '(.)+'\\);", 'line': "define('DB_USER', '{{wp_mysql_user}}');"}
+        - {'regexp': "define\\('DB_PASSWORD', '(.)+'\\);", 'line': "define('DB_PASSWORD', '{{wp_mysql_password}}');"}
+      sudo: yes
